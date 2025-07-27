@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_SUPABASE_URL=https://phkwcxmjkfjncvsqtshm.supabase.co
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBoa3djeG1qa2ZqbmN2c3F0c2htIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMwODg2NzMsImV4cCI6MjA2ODY2NDY3M30.FFFmTEUTi69Tp2vW_TVPsoJmuWA-5PfGnKPAx0Bk65k
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - meta-ads-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - SUPABASE_URL=https://phkwcxmjkfjncvsqtshm.supabase.co
+      - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBoa3djeG1qa2ZqbmN2c3F0c2htIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMwODg2NzMsImV4cCI6MjA2ODY2NDY3M30.FFFmTEUTi69Tp2vW_TVPsoJmuWA-5PfGnKPAx0Bk65k
+      - REDIS_URL=redis://redis:6379
+      - DEBUG=true
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - redis
+    networks:
+      - meta-ads-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - meta-ads-network
+
+volumes:
+  redis_data:
+
+networks:
+  meta-ads-network:
+    driver: bridge

@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "meta-ads-backend"
+version = "0.1.0"
+description = "FastAPI backend for Meta Ads full-stack application"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    {name = "Meta Ads Team", email = "team@meta-ads.com"},
+]
+keywords = ["meta", "facebook", "ads", "api", "fastapi", "supabase"]
+license = {text = "Apache-2.0"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
