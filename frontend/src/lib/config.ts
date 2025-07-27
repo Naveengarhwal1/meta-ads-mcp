@@ -12,6 +12,13 @@ export const config = {
     apiKey: process.env.OPENAI_API_KEY || 'your_openai_api_key_here'
   },
 
+  // Meta App Configuration
+  meta: {
+    appId: process.env.NEXT_PUBLIC_META_APP_ID || '665587869862344',
+    appSecret: process.env.META_APP_SECRET || '2eebb6109153f476f9df8625d673917e',
+    redirectUri: typeof window !== 'undefined' ? `${window.location.origin}/auth/meta/callback` : 'http://localhost:3000/auth/meta/callback'
+  },
+
   // Pipeboard Configuration (for local development only)
   pipeboard: {
     token: process.env.NEXT_PUBLIC_PIPEBOARD_TOKEN || 'your_pipeboard_token_here',
@@ -40,8 +47,12 @@ export const checkEnvironment = () => {
     missing.push('OPENAI_API_KEY')
   }
 
-  if (!config.pipeboard.token || config.pipeboard.token === 'your_pipeboard_token_here') {
-    missing.push('NEXT_PUBLIC_PIPEBOARD_TOKEN')
+  if (!config.meta.appId || config.meta.appId === 'your_meta_app_id_here') {
+    missing.push('NEXT_PUBLIC_META_APP_ID')
+  }
+
+  if (!config.meta.appSecret || config.meta.appSecret === 'your_meta_app_secret_here') {
+    missing.push('META_APP_SECRET')
   }
 
   if (missing.length > 0) {
