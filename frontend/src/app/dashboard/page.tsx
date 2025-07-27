@@ -1,17 +1,74 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import { useMetaAuth } from "@/lib/meta-auth"
+import { useMetaRealtime } from "@/lib/meta-realtime"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { BarChart3, MessageSquare, Settings, LogOut, User, BarChart, Target, DollarSign } from "lucide-react"
+import { MetaLogin } from "@/components/auth/meta-login"
+import { 
+  BarChart3, 
+  LogOut, 
+  User, 
+  ArrowLeft, 
+  Facebook, 
+  TrendingUp, 
+  DollarSign, 
+  Eye, 
+  MousePointer,
+  Settings,
+  Play,
+  Pause,
+  RefreshCw
+} from "lucide-react"
 import { User as UserType } from "@/types/user"
+import { AdAccount, Campaign } from "@/lib/meta-auth"
+import { RealtimeData, AccountStrategy } from "@/lib/meta-realtime"
 
 export default function DashboardPage() {
   const [user, setUser] = useState<UserType | null>(null)
   const [loading, setLoading] = useState(true)
+  const [metaConnected, setMetaConnected] = useState(false)
+  const [adAccounts, setAdAccounts] = useState<AdAccount[]>([])
+  const [selectedAccount, setSelectedAccount] = useState<AdAccount | null>(null)
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [realtimeData, setRealtimeData] = useState<RealtimeData[]>([])
+  const [strategies, setStrategies] = useState<AccountStrategy[]>([])
+  const [isMonitoring, setIsMonitoring] = useState(false)
+  
   const router = useRouter()
+  const { getAdAccounts, getCampaigns, validateToken } = useMetaAuth()
+  const { 
+    setAccessToken, 
+    startRealtimeMonitoring, 
+    stopRealtimeMonitoring, 
+    generateAccountStrategies,
+    executeStrategy 
+  } = useMetaRealtime()
+
+  const loadCampaigns = useCallback(async (accountId: string, accessToken: string) => {
+    try {
+      const campaignsData = await getCampaigns(accountId, accessToken)
+      setCampaigns(campaignsData)
+    } catch (error) {
+      console.error('Failed to load campaigns:', error)
+    }
+  }, [getCampaigns])
+
+  const loadAdAccounts = useCallback(async (accessToken: string) => {
+    try {
+      const accounts = await getAdAccounts(accessToken)
+      setAdAccounts(accounts)
+      if (accounts.length > 0) {
+        setSelectedAccount(accounts[0])
+        await loadCampaigns(accounts[0].id, accessToken)
+      }
+    } catch (error) {
+      console.error('Failed to load ad accounts:', error)
+    }
+  }, [getAdAccounts, loadCampaigns])
 
   useEffect(() => {
     const getUser = async () => {
@@ -21,11 +78,79 @@ export default function DashboardPage() {
         return
       }
       setUser(user)
+      
+      // Check if Meta is connected
+      const metaToken = user.user_metadata?.meta_access_token
+      if (metaToken) {
+        const isValid = await validateToken(metaToken)
+        if (isValid) {
+          setMetaConnected(true)
+          setAccessToken(metaToken)
+          await loadAdAccounts(metaToken)
+        }
+      }
+      
       setLoading(false)
     }
-
     getUser()
-  }, [router])
+  }, [router, validateToken, setAccessToken, loadAdAccounts])
+
+  const handleAccountSelect = async (account: AdAccount) => {
+    setSelectedAccount(account)
+    if (user?.user_metadata?.meta_access_token) {
+      await loadCampaigns(account.id, user.user_metadata.meta_access_token)
+    }
+  }
+
+  const startMonitoring = async () => {
+    if (!selectedAccount || !user?.user_metadata?.meta_access_token) return
+
+    try {
+      await startRealtimeMonitoring({
+        accountId: selectedAccount.id,
+        updateInterval: 30000, // 30 seconds
+        onDataUpdate: (data) => {
+          setRealtimeData(data)
+        },
+        onError: (error) => {
+          console.error('Real-time monitoring error:', error)
+        }
+      })
+      setIsMonitoring(true)
+    } catch (error) {
+      console.error('Failed to start monitoring:', error)
+    }
+  }
+
+  const stopMonitoring = () => {
+    if (selectedAccount) {
+      stopRealtimeMonitoring(selectedAccount.id)
+      setIsMonitoring(false)
+    }
+  }
+
+  const generateStrategies = async () => {
+    if (!selectedAccount) return
+
+    try {
+      const accountStrategies = await generateAccountStrategies(selectedAccount.id)
+      setStrategies(accountStrategies)
+    } catch (error) {
+      console.error('Failed to generate strategies:', error)
+    }
+  }
+
+  const handleExecuteStrategy = async (strategy: AccountStrategy) => {
+    try {
+      await executeStrategy(strategy)
+      // Refresh data after strategy execution
+      if (selectedAccount && user?.user_metadata?.meta_access_token) {
+        await loadCampaigns(selectedAccount.id, user.user_metadata.meta_access_token)
+      }
+    } catch (error) {
+      console.error('Failed to execute strategy:', error)
+    }
+  }
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -36,8 +161,8 @@ export default function DashboardPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
+          <p className="text-gray-600">Loading dashboard...</p>
         </div>
       </div>
     )
@@ -48,10 +173,21 @@ export default function DashboardPage() {
       {/* Header */}
       <header className="bg-white border-b">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <BarChart3 className="h-8 w-8 text-blue-600" />
-            <span className="text-xl font-bold text-gray-900">Meta Ads Manager</span>
+          <div className="flex items-center space-x-4">
+            <Button
+              variant="ghost"
+              onClick={() => router.push('/')}
+              className="flex items-center space-x-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span>Back</span>
+            </Button>
+            <div className="flex items-center space-x-2">
+              <BarChart3 className="h-6 w-6 text-blue-600" />
+              <h1 className="text-xl font-semibold">Meta Ads Dashboard</h1>
+            </div>
           </div>
+          
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-2">
               <User className="h-4 w-4 text-gray-600" />
@@ -59,7 +195,7 @@ export default function DashboardPage() {
                 {user?.user_metadata?.full_name || user?.email}
               </span>
             </div>
-            <Button variant="ghost" size="sm" onClick={handleSignOut}>
+            <Button variant="outline" onClick={handleSignOut}>
               <LogOut className="h-4 w-4 mr-2" />
               Sign Out
             </Button>
@@ -68,155 +204,251 @@ export default function DashboardPage() {
       </header>
 
       <div className="container mx-auto px-4 py-8">
-        {/* Navigation */}
-        <nav className="flex space-x-4 mb-8">
-          <Button variant="default" className="flex items-center space-x-2">
-            <BarChart className="h-4 w-4" />
-            <span>Dashboard</span>
-          </Button>
-          <Button 
-            variant="ghost" 
-            className="flex items-center space-x-2"
-            onClick={() => router.push('/chat')}
-          >
-            <MessageSquare className="h-4 w-4" />
-            <span>Chat</span>
-          </Button>
-          <Button variant="ghost" className="flex items-center space-x-2">
-            <Target className="h-4 w-4" />
-            <span>Campaigns</span>
-          </Button>
-          <Button variant="ghost" className="flex items-center space-x-2">
-            <Settings className="h-4 w-4" />
-            <span>Settings</span>
-          </Button>
-        </nav>
-
-        {/* Welcome Section */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Welcome back, {user?.user_metadata?.full_name || 'User'}!
-          </h1>
-          <p className="text-gray-600">
-            Here&apos;s an overview of your Meta Ads performance and recent activity.
-          </p>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid md:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Spend</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">$12,345</div>
-              <p className="text-xs text-muted-foreground">
-                +20.1% from last month
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Impressions</CardTitle>
-              <BarChart className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">2.4M</div>
-              <p className="text-xs text-muted-foreground">
-                +12.5% from last month
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Clicks</CardTitle>
-              <Target className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">45.2K</div>
-              <p className="text-xs text-muted-foreground">
-                +8.2% from last month
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">CTR</CardTitle>
-              <BarChart3 className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">1.89%</div>
-              <p className="text-xs text-muted-foreground">
-                +0.3% from last month
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Recent Activity */}
-        <div className="grid md:grid-cols-2 gap-6">
-          <Card>
+        {/* Meta Connection Status */}
+        {!metaConnected && (
+          <Card className="mb-8">
             <CardHeader>
-              <CardTitle>Recent Campaigns</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Facebook className="h-5 w-5 text-blue-600" />
+                Connect Meta Account
+              </CardTitle>
               <CardDescription>
-                Your latest advertising campaigns and their performance
+                Connect your Meta account to access your ad accounts and campaigns
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Summer Sale Campaign</p>
-                    <p className="text-sm text-gray-600">Active • $2,450 spent</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-medium text-green-600">+15.2%</p>
-                    <p className="text-sm text-gray-600">CTR</p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Brand Awareness</p>
-                    <p className="text-sm text-gray-600">Paused • $1,890 spent</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-medium text-red-600">-2.1%</p>
-                    <p className="text-sm text-gray-600">CTR</p>
-                  </div>
-                </div>
-              </div>
+              <MetaLogin />
             </CardContent>
           </Card>
+        )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle>AI Recommendations</CardTitle>
-              <CardDescription>
-                Smart suggestions to improve your campaign performance
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="p-3 bg-blue-50 rounded-lg">
-                  <p className="font-medium text-blue-900">Optimize Ad Spend</p>
-                  <p className="text-sm text-blue-700">
-                    Consider increasing budget for &quot;Summer Sale&quot; campaign by 20% based on strong performance.
-                  </p>
+        {metaConnected && (
+          <>
+            {/* Account Selection */}
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle>Ad Accounts</CardTitle>
+                <CardDescription>
+                  Select an ad account to view campaigns and real-time data
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {adAccounts.map((account) => (
+                    <Card
+                      key={account.id}
+                      className={`cursor-pointer transition-colors ${
+                        selectedAccount?.id === account.id
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'hover:border-gray-300'
+                      }`}
+                      onClick={() => handleAccountSelect(account)}
+                    >
+                      <CardContent className="p-4">
+                        <h3 className="font-semibold">{account.name}</h3>
+                        <p className="text-sm text-gray-600">
+                          Status: {account.account_status === 1 ? 'Active' : 'Inactive'}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          Currency: {account.currency}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
-                <div className="p-3 bg-green-50 rounded-lg">
-                  <p className="font-medium text-green-900">Targeting Opportunity</p>
-                  <p className="text-sm text-green-700">
-                    Add interest targeting for &quot;fitness enthusiasts&quot; to improve engagement rates.
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              </CardContent>
+            </Card>
+
+            {/* Real-time Monitoring Controls */}
+            {selectedAccount && (
+              <Card className="mb-8">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-green-600" />
+                    Real-time Monitoring
+                  </CardTitle>
+                  <CardDescription>
+                    Monitor live performance data for {selectedAccount.name}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center space-x-4">
+                    <Button
+                      onClick={isMonitoring ? stopMonitoring : startMonitoring}
+                      variant={isMonitoring ? "destructive" : "default"}
+                    >
+                      {isMonitoring ? (
+                        <>
+                          <Pause className="h-4 w-4 mr-2" />
+                          Stop Monitoring
+                        </>
+                      ) : (
+                        <>
+                          <Play className="h-4 w-4 mr-2" />
+                          Start Monitoring
+                        </>
+                      )}
+                    </Button>
+                    
+                    <Button
+                      onClick={generateStrategies}
+                      variant="outline"
+                    >
+                      <Settings className="h-4 w-4 mr-2" />
+                      Generate Strategies
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Campaigns */}
+            {selectedAccount && campaigns.length > 0 && (
+              <Card className="mb-8">
+                <CardHeader>
+                  <CardTitle>Campaigns</CardTitle>
+                  <CardDescription>
+                    Active campaigns in {selectedAccount.name}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {campaigns.map((campaign) => (
+                      <Card key={campaign.id}>
+                        <CardContent className="p-4">
+                          <h3 className="font-semibold">{campaign.name}</h3>
+                          <div className="mt-2 space-y-1">
+                            <p className="text-sm">
+                              <span className="font-medium">Status:</span> {campaign.status}
+                            </p>
+                            <p className="text-sm">
+                              <span className="font-medium">Objective:</span> {campaign.objective}
+                            </p>
+                            <p className="text-sm">
+                              <span className="font-medium">Daily Budget:</span> ${(campaign.daily_budget / 100).toFixed(2)}
+                            </p>
+                            <p className="text-sm">
+                              <span className="font-medium">Spend:</span> ${(campaign.spend / 100).toFixed(2)}
+                            </p>
+                            <p className="text-sm">
+                              <span className="font-medium">CTR:</span> {campaign.ctr.toFixed(2)}%
+                            </p>
+                            <p className="text-sm">
+                              <span className="font-medium">CPC:</span> ${campaign.cpc.toFixed(2)}
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Real-time Data */}
+            {isMonitoring && realtimeData.length > 0 && (
+              <Card className="mb-8">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <RefreshCw className="h-5 w-5 text-blue-600 animate-spin" />
+                    Live Performance Data
+                  </CardTitle>
+                  <CardDescription>
+                    Real-time metrics from your campaigns
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {realtimeData.map((data, index) => (
+                      <Card key={index}>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium">Spend</p>
+                              <p className="text-lg font-bold">${data.spend.toFixed(2)}</p>
+                            </div>
+                            <DollarSign className="h-5 w-5 text-green-600" />
+                          </div>
+                          <div className="mt-2 space-y-1">
+                            <p className="text-sm">
+                              <Eye className="h-3 w-3 inline mr-1" />
+                              {data.impressions.toLocaleString()} impressions
+                            </p>
+                            <p className="text-sm">
+                              <MousePointer className="h-3 w-3 inline mr-1" />
+                              {data.clicks.toLocaleString()} clicks
+                            </p>
+                            <p className="text-sm">
+                              CTR: {data.ctr.toFixed(2)}%
+                            </p>
+                            <p className="text-sm">
+                              CPC: ${data.cpc.toFixed(2)}
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Account Strategies */}
+            {strategies.length > 0 && (
+              <Card className="mb-8">
+                <CardHeader>
+                  <CardTitle>AI-Generated Strategies</CardTitle>
+                  <CardDescription>
+                    Optimization strategies based on your campaign performance
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {strategies.map((strategy) => (
+                      <Card key={strategy.id}>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h3 className="font-semibold">{strategy.name}</h3>
+                              <p className="text-sm text-gray-600">
+                                Type: {strategy.type.replace('_', ' ')}
+                              </p>
+                            </div>
+                            <Button
+                              onClick={() => handleExecuteStrategy(strategy)}
+                              size="sm"
+                            >
+                              Execute
+                            </Button>
+                          </div>
+                          <div className="mt-2">
+                            <p className="text-sm">
+                              <span className="font-medium">Actions:</span>
+                            </p>
+                            <ul className="text-sm text-gray-600 mt-1">
+                              {strategy.actions.pauseLowPerforming && (
+                                <li>• Pause low performing campaigns</li>
+                              )}
+                              {strategy.actions.increaseBudget && (
+                                <li>• Increase budget for high performers</li>
+                              )}
+                              {strategy.actions.adjustBidding && (
+                                <li>• Adjust bidding strategy</li>
+                              )}
+                              {strategy.actions.expandAudience && (
+                                <li>• Expand audience targeting</li>
+                              )}
+                            </ul>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </>
+        )}
       </div>
     </div>
   )
