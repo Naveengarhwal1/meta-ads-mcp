@@ -10,7 +10,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { MetaLogin } from "@/components/auth/meta-login"
-import { FacebookSDKDebug } from "@/components/debug/facebook-sdk-debug"
 import { DashboardOverview } from "@/components/dashboard/dashboard-overview"
 import { CampaignManager } from "@/components/dashboard/campaign-manager"
 import { RealtimeMonitor } from "@/components/dashboard/realtime-monitor"
@@ -250,17 +249,7 @@ export default function DashboardPage() {
           </Card>
         )}
 
-        {/* Debug Panel (Development Only) */}
-        {process.env.NODE_ENV === 'development' && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="text-sm">Debug Panel</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <FacebookSDKDebug />
-            </CardContent>
-          </Card>
-        )}
+
 
         {/* Main Dashboard Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
