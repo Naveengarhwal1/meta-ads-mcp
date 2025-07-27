@@ -73,7 +73,11 @@ export default function DashboardPage() {
             <BarChart className="h-4 w-4" />
             <span>Dashboard</span>
           </Button>
-          <Button variant="ghost" className="flex items-center space-x-2">
+          <Button 
+            variant="ghost" 
+            className="flex items-center space-x-2"
+            onClick={() => router.push('/chat')}
+          >
             <MessageSquare className="h-4 w-4" />
             <span>Chat</span>
           </Button>
