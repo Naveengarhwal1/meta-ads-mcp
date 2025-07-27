@@ -86,36 +86,119 @@ class MetaAuthService {
 
   // Check if Facebook SDK is available
   private isFacebookSDKAvailable(): boolean {
-    return typeof window !== 'undefined' && 
+    const available = typeof window !== 'undefined' && 
            window.FB !== undefined && 
            window.FB.api !== undefined &&
            window.FB.login !== undefined
+    
+    console.log('Facebook SDK availability check:', {
+      window: typeof window !== 'undefined',
+      FB: window.FB !== undefined,
+      FB_api: window.FB?.api !== undefined,
+      FB_login: window.FB?.login !== undefined,
+      FB_init: window.FB?.init !== undefined,
+      available
+    })
+    
+    return available
   }
 
   // Get SDK status for debugging
   getSDKStatus(): { available: boolean; error?: string } {
+    console.log('Getting SDK status...')
+    
     if (typeof window === 'undefined') {
+      console.log('Window not available (server-side rendering)')
       return { available: false, error: 'Window not available (server-side rendering)' }
     }
     
     if (!window.FB) {
+      console.log('Facebook SDK not loaded')
       return { available: false, error: 'Facebook SDK not loaded' }
     }
     
     if (!window.FB.api) {
+      console.log('Facebook SDK API not available')
       return { available: false, error: 'Facebook SDK API not available' }
     }
     
     if (!window.FB.login) {
+      console.log('Facebook SDK login not available')
       return { available: false, error: 'Facebook SDK login not available' }
     }
     
+    console.log('Facebook SDK is available')
     return { available: true }
   }
 
-  // Initialize Meta SDK
+  private loadFacebookSDK(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      // Check if SDK is already loaded
+      if (window.FB) {
+        console.log('Facebook SDK already loaded')
+        resolve()
+        return
+      }
+
+      // Check if script is already being loaded
+      if (document.querySelector('script[src*="connect.facebook.net"]')) {
+        console.log('Facebook SDK script already loading, waiting...')
+        this.waitForSDK(resolve, reject)
+        return
+      }
+
+      console.log('Loading Facebook SDK...')
+      
+      // Create script element
+      const script = document.createElement('script')
+      script.src = 'https://connect.facebook.net/en_US/sdk.js'
+      script.async = true
+      script.defer = true
+      script.crossOrigin = 'anonymous'
+      script.id = 'facebook-jssdk'
+
+      // Handle script load
+      script.onload = () => {
+        console.log('Facebook SDK script loaded, waiting for initialization...')
+        this.waitForSDK(resolve, reject)
+      }
+
+      // Handle script error
+      script.onerror = () => {
+        console.error('Failed to load Facebook SDK script')
+        reject(new Error('Failed to load Facebook SDK from CDN'))
+      }
+
+      // Add script to document
+      document.head.appendChild(script)
+    })
+  }
+
+  private waitForSDK(resolve: () => void, reject: (error: Error) => void, attempts = 0): void {
+    const maxAttempts = 10
+    const interval = 500 // 500ms between attempts
+
+    if (attempts >= maxAttempts) {
+      reject(new Error('Facebook SDK failed to initialize after multiple attempts'))
+      return
+    }
+
+    if (window.FB && window.FB.init) {
+      console.log('Facebook SDK ready')
+      resolve()
+      return
+    }
+
+    console.log(`Waiting for Facebook SDK... (attempt ${attempts + 1}/${maxAttempts})`)
+    
+    setTimeout(() => {
+      this.waitForSDK(resolve, reject, attempts + 1)
+    }, interval)
+  }
+
   async initMetaSDK(): Promise<void> {
     try {
+      console.log('Initializing Facebook SDK...')
       await this.loadFacebookSDK()
       
       // Initialize Facebook SDK
@@ -126,48 +209,11 @@ class MetaAuthService {
         version: 'v18.0'
       })
       
-      console.log('Facebook SDK initialized successfully')
+      console.log('Facebook SDK initialized successfully with app ID:', this.appId)
     } catch (error) {
       console.error('Failed to initialize Facebook SDK:', error)
-      throw new Error('Failed to initialize Facebook SDK. Please refresh the page and try again.')
+      throw new Error(`Failed to initialize Facebook SDK: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
-  }
-
-  private loadFacebookSDK(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      // Check if SDK is already loaded
-      if (window.FB) {
-        resolve()
-        return
-      }
-
-      // Create script element
-      const script = document.createElement('script')
-      script.src = 'https://connect.facebook.net/en_US/sdk.js'
-      script.async = true
-      script.defer = true
-      script.crossOrigin = 'anonymous'
-
-      // Handle script load
-      script.onload = () => {
-        // Wait a bit for SDK to initialize
-        setTimeout(() => {
-          if (window.FB) {
-            resolve()
-          } else {
-            reject(new Error('Facebook SDK failed to load'))
-          }
-        }, 1000)
-      }
-
-      // Handle script error
-      script.onerror = () => {
-        reject(new Error('Failed to load Facebook SDK'))
-      }
-
-      // Add script to document
-      document.head.appendChild(script)
-    })
   }
 
   // Login with Meta
