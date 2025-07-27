@@ -51,7 +51,7 @@ export type Database = {
           created_at: string
           updated_at: string
           is_active: boolean
-          metadata: any | null
+          metadata: Record<string, unknown> | null
         }
         Insert: {
           id?: string
@@ -60,7 +60,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           is_active?: boolean
-          metadata?: any | null
+          metadata?: Record<string, unknown> | null
         }
         Update: {
           id?: string
@@ -69,7 +69,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           is_active?: boolean
-          metadata?: any | null
+          metadata?: Record<string, unknown> | null
         }
       }
       chat_messages: {
@@ -80,7 +80,7 @@ export type Database = {
           message_type: string
           user_id: string
           created_at: string
-          metadata: any | null
+          metadata: Record<string, unknown> | null
         }
         Insert: {
           id?: string
@@ -89,7 +89,7 @@ export type Database = {
           message_type: string
           user_id: string
           created_at?: string
-          metadata?: any | null
+          metadata?: Record<string, unknown> | null
         }
         Update: {
           id?: string
@@ -98,7 +98,7 @@ export type Database = {
           message_type?: string
           user_id?: string
           created_at?: string
-          metadata?: any | null
+          metadata?: Record<string, unknown> | null
         }
       }
     }

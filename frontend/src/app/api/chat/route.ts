@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server'
 
 // Mock MCP tools - replace with actual MCP integration
 const MCP_TOOLS = {
-  getAdAccounts: async (accessToken?: string) => {
+  getAdAccounts: async (_accessToken?: string) => {
     // Mock data - replace with actual MCP call
     return {
       accounts: [
@@ -13,7 +13,7 @@ const MCP_TOOLS = {
     }
   },
   
-  getCampaigns: async (accountId: string, accessToken?: string) => {
+  getCampaigns: async (_accountId: string, _accessToken?: string) => {
     // Mock data - replace with actual MCP call
     return {
       campaigns: [
@@ -39,7 +39,7 @@ const MCP_TOOLS = {
     }
   },
   
-  getInsights: async (objectId: string, accessToken?: string) => {
+  getInsights: async (_objectId: string, _accessToken?: string) => {
     // Mock data - replace with actual MCP call
     return {
       insights: [
@@ -63,17 +63,18 @@ function shouldGenerateChart(message: string): boolean {
 }
 
 // Function to generate chart data based on the request
-function generateChartData(message: string, data: any) {
+function generateChartData(message: string, data: Record<string, unknown>) {
   const lowerMessage = message.toLowerCase()
   
   if (lowerMessage.includes('spend') || lowerMessage.includes('budget')) {
+    const insights = data.insights as Array<{ date: string; spend: number }> | undefined
     return {
       type: 'line',
       data: {
-        labels: data.insights?.map((d: any) => d.date) || [],
+        labels: insights?.map((d) => d.date) || [],
         datasets: [{
           label: 'Daily Spend',
-          data: data.insights?.map((d: any) => d.spend) || [],
+          data: insights?.map((d) => d.spend) || [],
           borderColor: 'rgb(59, 130, 246)',
           backgroundColor: 'rgba(59, 130, 246, 0.1)',
           tension: 0.1
@@ -92,13 +93,14 @@ function generateChartData(message: string, data: any) {
   }
   
   if (lowerMessage.includes('ctr') || lowerMessage.includes('click')) {
+    const campaigns = data.campaigns as Array<{ name: string; ctr: number }> | undefined
     return {
       type: 'bar',
       data: {
-        labels: data.campaigns?.map((c: any) => c.name) || [],
+        labels: campaigns?.map((c) => c.name) || [],
         datasets: [{
           label: 'Click-Through Rate (%)',
-          data: data.campaigns?.map((c: any) => c.ctr) || [],
+          data: campaigns?.map((c) => c.ctr) || [],
           backgroundColor: 'rgba(34, 197, 94, 0.8)',
           borderColor: 'rgb(34, 197, 94)',
           borderWidth: 1
@@ -117,12 +119,13 @@ function generateChartData(message: string, data: any) {
   }
   
   if (lowerMessage.includes('impression') || lowerMessage.includes('reach')) {
+    const campaigns = data.campaigns as Array<{ name: string; impressions: number }> | undefined
     return {
       type: 'doughnut',
       data: {
-        labels: data.campaigns?.map((c: any) => c.name) || [],
+        labels: campaigns?.map((c) => c.name) || [],
         datasets: [{
-          data: data.campaigns?.map((c: any) => c.impressions) || [],
+          data: campaigns?.map((c) => c.impressions) || [],
           backgroundColor: [
             'rgba(255, 99, 132, 0.8)',
             'rgba(54, 162, 235, 0.8)',

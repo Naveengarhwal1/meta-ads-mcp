@@ -6,9 +6,10 @@ import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { BarChart3, MessageSquare, Settings, LogOut, User, BarChart, Target, DollarSign } from "lucide-react"
+import { User as UserType } from "@/types/user"
 
 export default function DashboardPage() {
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<UserType | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
@@ -97,7 +98,7 @@ export default function DashboardPage() {
             Welcome back, {user?.user_metadata?.full_name || 'User'}!
           </h1>
           <p className="text-gray-600">
-            Here's an overview of your Meta Ads performance and recent activity.
+            Here&apos;s an overview of your Meta Ads performance and recent activity.
           </p>
         </div>
 
@@ -203,13 +204,13 @@ export default function DashboardPage() {
                 <div className="p-3 bg-blue-50 rounded-lg">
                   <p className="font-medium text-blue-900">Optimize Ad Spend</p>
                   <p className="text-sm text-blue-700">
-                    Consider increasing budget for "Summer Sale" campaign by 20% based on strong performance.
+                    Consider increasing budget for &quot;Summer Sale&quot; campaign by 20% based on strong performance.
                   </p>
                 </div>
                 <div className="p-3 bg-green-50 rounded-lg">
                   <p className="font-medium text-green-900">Targeting Opportunity</p>
                   <p className="text-sm text-green-700">
-                    Add interest targeting for "fitness enthusiasts" to improve engagement rates.
+                    Add interest targeting for &quot;fitness enthusiasts&quot; to improve engagement rates.
                   </p>
                 </div>
               </div>

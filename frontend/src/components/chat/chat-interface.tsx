@@ -1,6 +1,5 @@
 "use client"
 
-import { useChat } from 'ai/react'
 import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -166,12 +165,12 @@ export function ChatInterface({ accessToken, className = "" }: ChatInterfaceProp
                   {suggestedQuestions.map((question, index) => (
                     <button
                       key={index}
-                      onClick={() => {
-                        if (inputRef.current) {
-                          inputRef.current.value = question
-                          handleSubmit(new Event('submit') as any)
-                        }
-                      }}
+                                              onClick={() => {
+                          if (inputRef.current) {
+                            inputRef.current.value = question
+                            handleSubmit(new Event('submit') as React.FormEvent)
+                          }
+                        }}
                       className="text-left p-3 text-sm bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
                     >
                       {question}

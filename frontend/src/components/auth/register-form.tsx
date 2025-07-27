@@ -46,7 +46,7 @@ export function RegisterForm() {
           router.push("/login")
         }, 3000)
       }
-    } catch (err) {
+    } catch (_err) {
       setError("An unexpected error occurred")
     } finally {
       setLoading(false)

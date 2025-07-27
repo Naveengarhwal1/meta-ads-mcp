@@ -35,7 +35,7 @@ export function LoginForm() {
         // Redirect to dashboard
         router.push("/dashboard")
       }
-    } catch (err) {
+    } catch (_err) {
       setError("An unexpected error occurred")
     } finally {
       setLoading(false)
@@ -105,7 +105,7 @@ export function LoginForm() {
         </form>
 
         <div className="mt-4 text-center text-sm">
-          <span className="text-gray-600">Don't have an account? </span>
+                                <span className="text-gray-600">Don&apos;t have an account? </span>
           <button
             onClick={() => router.push("/register")}
             className="text-blue-600 hover:underline"

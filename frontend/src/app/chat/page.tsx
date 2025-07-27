@@ -6,9 +6,10 @@ import { supabase } from "@/lib/supabase"
 import { ChatInterface } from "@/components/chat/chat-interface"
 import { Button } from "@/components/ui/button"
 import { BarChart3, LogOut, User, ArrowLeft } from "lucide-react"
+import { User as UserType } from "@/types/user"
 
 export default function ChatPage() {
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<UserType | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
