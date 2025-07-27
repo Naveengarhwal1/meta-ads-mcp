@@ -7,12 +7,18 @@ import { useMetaAuth } from "@/lib/meta-auth"
 import { useMetaRealtime } from "@/lib/meta-realtime"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { MetaLogin } from "@/components/auth/meta-login"
+import { DashboardOverview } from "@/components/dashboard/dashboard-overview"
+import { CampaignManager } from "@/components/dashboard/campaign-manager"
+import { RealtimeMonitor } from "@/components/dashboard/realtime-monitor"
+import { StrategyManager } from "@/components/dashboard/strategy-manager"
 import { 
   BarChart3, 
   LogOut, 
   User, 
-  ArrowLeft, 
+  MessageSquare, 
   Facebook, 
   TrendingUp, 
   DollarSign, 
@@ -21,7 +27,13 @@ import {
   Settings,
   Play,
   Pause,
-  RefreshCw
+  RefreshCw,
+  CheckCircle,
+  AlertCircle,
+  Home,
+  Target,
+  Activity,
+  Brain
 } from "lucide-react"
 import { User as UserType } from "@/types/user"
 import { AdAccount, Campaign } from "@/lib/meta-auth"
@@ -37,6 +49,7 @@ export default function DashboardPage() {
   const [realtimeData, setRealtimeData] = useState<RealtimeData[]>([])
   const [strategies, setStrategies] = useState<AccountStrategy[]>([])
   const [isMonitoring, setIsMonitoring] = useState(false)
+  const [activeTab, setActiveTab] = useState("overview")
   
   const router = useRouter()
   const { getAdAccounts, getCampaigns, validateToken } = useMetaAuth()
@@ -95,46 +108,31 @@ export default function DashboardPage() {
     getUser()
   }, [router, validateToken, setAccessToken, loadAdAccounts])
 
-  const handleAccountSelect = async (account: AdAccount) => {
-    setSelectedAccount(account)
-    if (user?.user_metadata?.meta_access_token) {
-      await loadCampaigns(account.id, user.user_metadata.meta_access_token)
-    }
-  }
-
   const startMonitoring = async () => {
-    if (!selectedAccount || !user?.user_metadata?.meta_access_token) return
-
+    if (!selectedAccount) return
+    
     try {
-      await startRealtimeMonitoring({
-        accountId: selectedAccount.id,
-        updateInterval: 30000, // 30 seconds
-        onDataUpdate: (data) => {
-          setRealtimeData(data)
-        },
-        onError: (error) => {
-          console.error('Real-time monitoring error:', error)
-        }
-      })
       setIsMonitoring(true)
+      await startRealtimeMonitoring(selectedAccount.id)
+      console.log('Started realtime monitoring')
     } catch (error) {
       console.error('Failed to start monitoring:', error)
-    }
-  }
-
-  const stopMonitoring = () => {
-    if (selectedAccount) {
-      stopRealtimeMonitoring(selectedAccount.id)
       setIsMonitoring(false)
     }
   }
 
+  const stopMonitoring = () => {
+    stopRealtimeMonitoring()
+    setIsMonitoring(false)
+    console.log('Stopped realtime monitoring')
+  }
+
   const generateStrategies = async () => {
     if (!selectedAccount) return
-
+    
     try {
-      const accountStrategies = await generateAccountStrategies(selectedAccount.id)
-      setStrategies(accountStrategies)
+      const newStrategies = await generateAccountStrategies(selectedAccount.id)
+      setStrategies(newStrategies)
     } catch (error) {
       console.error('Failed to generate strategies:', error)
     }
@@ -143,10 +141,7 @@ export default function DashboardPage() {
   const handleExecuteStrategy = async (strategy: AccountStrategy) => {
     try {
       await executeStrategy(strategy)
-      // Refresh data after strategy execution
-      if (selectedAccount && user?.user_metadata?.meta_access_token) {
-        await loadCampaigns(selectedAccount.id, user.user_metadata.meta_access_token)
-      }
+      console.log('Strategy executed successfully')
     } catch (error) {
       console.error('Failed to execute strategy:', error)
     }
@@ -154,302 +149,169 @@ export default function DashboardPage() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
-    router.push('/')
+    router.push('/login')
+  }
+
+  const handleMetaLoginSuccess = async (accessToken: string) => {
+    try {
+      setMetaConnected(true)
+      setAccessToken(accessToken)
+      await loadAdAccounts(accessToken)
+      
+      // Update user metadata
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        await supabase.auth.updateUser({
+          data: { meta_access_token: accessToken }
+        })
+      }
+    } catch (error) {
+      console.error('Failed to handle Meta login success:', error)
+    }
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
         <div className="text-center">
-          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
-          <p className="text-gray-600">Loading dashboard...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading your dashboard...</p>
         </div>
       </div>
     )
   }
 
+  if (!user) {
+    return null
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Header */}
-      <header className="bg-white border-b">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <Button
-              variant="ghost"
-              onClick={() => router.push('/')}
-              className="flex items-center space-x-2"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              <span>Back</span>
-            </Button>
-            <div className="flex items-center space-x-2">
-              <BarChart3 className="h-6 w-6 text-blue-600" />
-              <h1 className="text-xl font-semibold">Meta Ads Dashboard</h1>
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <BarChart3 className="h-8 w-8 text-blue-600" />
+                <h1 className="text-xl font-bold text-gray-900">Meta Ads Manager</h1>
+              </div>
+              {metaConnected && (
+                <Badge variant="secondary" className="bg-green-100 text-green-800">
+                  <CheckCircle className="w-3 h-3 mr-1" />
+                  Meta Connected
+                </Badge>
+              )}
             </div>
-          </div>
-          
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <User className="h-4 w-4 text-gray-600" />
-              <span className="text-sm text-gray-600">
-                {user?.user_metadata?.full_name || user?.email}
-              </span>
+            
+            <div className="flex items-center space-x-4">
+              <Button
+                variant="outline"
+                onClick={() => router.push('/chat')}
+                className="flex items-center space-x-2"
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span>Chat Assistant</span>
+              </Button>
+              
+              <div className="flex items-center space-x-2">
+                <User className="w-4 h-4 text-gray-500" />
+                <span className="text-sm text-gray-700">{user.email}</span>
+              </div>
+              
+              <Button variant="outline" size="sm" onClick={handleSignOut}>
+                <LogOut className="w-4 h-4" />
+              </Button>
             </div>
-            <Button variant="outline" onClick={handleSignOut}>
-              <LogOut className="h-4 w-4 mr-2" />
-              Sign Out
-            </Button>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-4 py-8">
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Meta Connection Status */}
         {!metaConnected && (
-          <Card className="mb-8">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Facebook className="h-5 w-5 text-blue-600" />
-                Connect Meta Account
-              </CardTitle>
-              <CardDescription>
-                Connect your Meta account to access your ad accounts and campaigns
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <MetaLogin />
+          <Card className="mb-6 border-orange-200 bg-orange-50">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <AlertCircle className="w-5 h-5 text-orange-600" />
+                  <div>
+                    <h3 className="font-medium text-orange-800">Connect Meta Account</h3>
+                    <p className="text-sm text-orange-700">
+                      Connect your Meta account to start managing your ads
+                    </p>
+                  </div>
+                </div>
+                <MetaLogin onLoginSuccess={handleMetaLoginSuccess} />
+              </div>
             </CardContent>
           </Card>
         )}
 
-        {metaConnected && (
-          <>
-            {/* Account Selection */}
-            <Card className="mb-8">
-              <CardHeader>
-                <CardTitle>Ad Accounts</CardTitle>
-                <CardDescription>
-                  Select an ad account to view campaigns and real-time data
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {adAccounts.map((account) => (
-                    <Card
-                      key={account.id}
-                      className={`cursor-pointer transition-colors ${
-                        selectedAccount?.id === account.id
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'hover:border-gray-300'
-                      }`}
-                      onClick={() => handleAccountSelect(account)}
-                    >
-                      <CardContent className="p-4">
-                        <h3 className="font-semibold">{account.name}</h3>
-                        <p className="text-sm text-gray-600">
-                          Status: {account.account_status === 1 ? 'Active' : 'Inactive'}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          Currency: {account.currency}
-                        </p>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
 
-            {/* Real-time Monitoring Controls */}
-            {selectedAccount && (
-              <Card className="mb-8">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5 text-green-600" />
-                    Real-time Monitoring
-                  </CardTitle>
-                  <CardDescription>
-                    Monitor live performance data for {selectedAccount.name}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center space-x-4">
-                    <Button
-                      onClick={isMonitoring ? stopMonitoring : startMonitoring}
-                      variant={isMonitoring ? "destructive" : "default"}
-                    >
-                      {isMonitoring ? (
-                        <>
-                          <Pause className="h-4 w-4 mr-2" />
-                          Stop Monitoring
-                        </>
-                      ) : (
-                        <>
-                          <Play className="h-4 w-4 mr-2" />
-                          Start Monitoring
-                        </>
-                      )}
-                    </Button>
-                    
-                    <Button
-                      onClick={generateStrategies}
-                      variant="outline"
-                    >
-                      <Settings className="h-4 w-4 mr-2" />
-                      Generate Strategies
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
 
-            {/* Campaigns */}
-            {selectedAccount && campaigns.length > 0 && (
-              <Card className="mb-8">
-                <CardHeader>
-                  <CardTitle>Campaigns</CardTitle>
-                  <CardDescription>
-                    Active campaigns in {selectedAccount.name}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {campaigns.map((campaign) => (
-                      <Card key={campaign.id}>
-                        <CardContent className="p-4">
-                          <h3 className="font-semibold">{campaign.name}</h3>
-                          <div className="mt-2 space-y-1">
-                            <p className="text-sm">
-                              <span className="font-medium">Status:</span> {campaign.status}
-                            </p>
-                            <p className="text-sm">
-                              <span className="font-medium">Objective:</span> {campaign.objective}
-                            </p>
-                            <p className="text-sm">
-                              <span className="font-medium">Daily Budget:</span> ${(campaign.daily_budget / 100).toFixed(2)}
-                            </p>
-                            <p className="text-sm">
-                              <span className="font-medium">Spend:</span> ${(campaign.spend / 100).toFixed(2)}
-                            </p>
-                            <p className="text-sm">
-                              <span className="font-medium">CTR:</span> {campaign.ctr.toFixed(2)}%
-                            </p>
-                            <p className="text-sm">
-                              <span className="font-medium">CPC:</span> ${campaign.cpc.toFixed(2)}
-                            </p>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+        {/* Main Dashboard Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="overview" className="flex items-center space-x-2">
+              <Home className="w-4 h-4" />
+              <span>Overview</span>
+            </TabsTrigger>
+            <TabsTrigger value="campaigns" className="flex items-center space-x-2">
+              <Target className="w-4 h-4" />
+              <span>Campaigns</span>
+            </TabsTrigger>
+            <TabsTrigger value="monitor" className="flex items-center space-x-2">
+              <Activity className="w-4 h-4" />
+              <span>Monitor</span>
+            </TabsTrigger>
+            <TabsTrigger value="strategies" className="flex items-center space-x-2">
+              <Brain className="w-4 h-4" />
+              <span>Strategies</span>
+            </TabsTrigger>
+          </TabsList>
 
-            {/* Real-time Data */}
-            {isMonitoring && realtimeData.length > 0 && (
-              <Card className="mb-8">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <RefreshCw className="h-5 w-5 text-blue-600 animate-spin" />
-                    Live Performance Data
-                  </CardTitle>
-                  <CardDescription>
-                    Real-time metrics from your campaigns
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {realtimeData.map((data, index) => (
-                      <Card key={index}>
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm font-medium">Spend</p>
-                              <p className="text-lg font-bold">${data.spend.toFixed(2)}</p>
-                            </div>
-                            <DollarSign className="h-5 w-5 text-green-600" />
-                          </div>
-                          <div className="mt-2 space-y-1">
-                            <p className="text-sm">
-                              <Eye className="h-3 w-3 inline mr-1" />
-                              {data.impressions.toLocaleString()} impressions
-                            </p>
-                            <p className="text-sm">
-                              <MousePointer className="h-3 w-3 inline mr-1" />
-                              {data.clicks.toLocaleString()} clicks
-                            </p>
-                            <p className="text-sm">
-                              CTR: {data.ctr.toFixed(2)}%
-                            </p>
-                            <p className="text-sm">
-                              CPC: ${data.cpc.toFixed(2)}
-                            </p>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+          <TabsContent value="overview" className="space-y-6">
+            <DashboardOverview 
+              user={user}
+              metaConnected={metaConnected}
+              adAccounts={adAccounts}
+              selectedAccount={selectedAccount}
+              campaigns={campaigns}
+              realtimeData={realtimeData}
+              onAccountSelect={setSelectedAccount}
+            />
+          </TabsContent>
 
-            {/* Account Strategies */}
-            {strategies.length > 0 && (
-              <Card className="mb-8">
-                <CardHeader>
-                  <CardTitle>AI-Generated Strategies</CardTitle>
-                  <CardDescription>
-                    Optimization strategies based on your campaign performance
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {strategies.map((strategy) => (
-                      <Card key={strategy.id}>
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <h3 className="font-semibold">{strategy.name}</h3>
-                              <p className="text-sm text-gray-600">
-                                Type: {strategy.type.replace('_', ' ')}
-                              </p>
-                            </div>
-                            <Button
-                              onClick={() => handleExecuteStrategy(strategy)}
-                              size="sm"
-                            >
-                              Execute
-                            </Button>
-                          </div>
-                          <div className="mt-2">
-                            <p className="text-sm">
-                              <span className="font-medium">Actions:</span>
-                            </p>
-                            <ul className="text-sm text-gray-600 mt-1">
-                              {strategy.actions.pauseLowPerforming && (
-                                <li>• Pause low performing campaigns</li>
-                              )}
-                              {strategy.actions.increaseBudget && (
-                                <li>• Increase budget for high performers</li>
-                              )}
-                              {strategy.actions.adjustBidding && (
-                                <li>• Adjust bidding strategy</li>
-                              )}
-                              {strategy.actions.expandAudience && (
-                                <li>• Expand audience targeting</li>
-                              )}
-                            </ul>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </>
-        )}
-      </div>
+          <TabsContent value="campaigns" className="space-y-6">
+            <CampaignManager 
+              campaigns={campaigns}
+              selectedAccount={selectedAccount}
+              onRefresh={() => selectedAccount && loadCampaigns(selectedAccount.id, user.user_metadata?.meta_access_token)}
+            />
+          </TabsContent>
+
+          <TabsContent value="monitor" className="space-y-6">
+            <RealtimeMonitor 
+              isMonitoring={isMonitoring}
+              realtimeData={realtimeData}
+              onStartMonitoring={startMonitoring}
+              onStopMonitoring={stopMonitoring}
+              selectedAccount={selectedAccount}
+            />
+          </TabsContent>
+
+          <TabsContent value="strategies" className="space-y-6">
+            <StrategyManager 
+              strategies={strategies}
+              onGenerateStrategies={generateStrategies}
+              onExecuteStrategy={handleExecuteStrategy}
+              selectedAccount={selectedAccount}
+            />
+          </TabsContent>
+        </Tabs>
+      </main>
     </div>
   )
 }
