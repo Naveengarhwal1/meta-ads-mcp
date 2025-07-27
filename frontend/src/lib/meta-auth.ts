@@ -35,33 +35,6 @@ export interface Campaign {
   updated_time: string
 }
 
-export interface AdSet {
-  id: string
-  name: string
-  status: string
-  campaign_id: string
-  daily_budget: number
-  lifetime_budget: number
-  targeting: Record<string, unknown>
-  created_time: string
-  updated_time: string
-}
-
-export interface Ad {
-  id: string
-  name: string
-  status: string
-  adset_id: string
-  creative: {
-    id: string
-    title?: string
-    body?: string
-    image_url?: string
-  }
-  created_time: string
-  updated_time: string
-}
-
 export interface Insights {
   date_start: string
   date_stop: string
@@ -75,15 +48,40 @@ export interface Insights {
   frequency: number
 }
 
+interface FacebookResponse {
+  authResponse?: {
+    accessToken: string
+    userID: string
+    expiresIn: number
+  }
+  error?: {
+    message: string
+  }
+}
+
+interface FacebookUserResponse {
+  id: string
+  name: string
+  email?: string
+  error?: {
+    message: string
+  }
+}
+
+interface FacebookApiResponse<T> {
+  data?: T[]
+  error?: {
+    message: string
+  }
+}
+
 class MetaAuthService {
   private appId: string
   private appSecret: string
-  private redirectUri: string
 
   constructor() {
     this.appId = config.meta.appId
     this.appSecret = config.meta.appSecret
-    this.redirectUri = config.meta.redirectUri
   }
 
   // Initialize Meta SDK
@@ -128,7 +126,7 @@ class MetaAuthService {
     await this.initMetaSDK()
 
     return new Promise((resolve, reject) => {
-      window.FB.login((response: any) => {
+      window.FB.login((response: FacebookResponse) => {
         if (response.authResponse) {
           const { accessToken, userID, expiresIn } = response.authResponse
           const expiresAt = Date.now() + (expiresIn * 1000)
@@ -156,7 +154,7 @@ class MetaAuthService {
   // Get user information
   private async getUserInfo(accessToken: string): Promise<{ name: string; email?: string }> {
     return new Promise((resolve, reject) => {
-      window.FB.api('/me', { access_token: accessToken }, (response: any) => {
+      window.FB.api('/me', { access_token: accessToken }, (response: FacebookUserResponse) => {
         if (response && !response.error) {
           resolve({
             name: response.name,
@@ -175,7 +173,7 @@ class MetaAuthService {
       window.FB.api('/me/adaccounts', {
         access_token: accessToken,
         fields: 'id,name,account_status,currency,timezone_name,business_name,account_type'
-      }, (response: any) => {
+      }, (response: FacebookApiResponse<AdAccount>) => {
         if (response && !response.error && response.data) {
           resolve(response.data)
         } else {
@@ -191,7 +189,7 @@ class MetaAuthService {
       window.FB.api(`/${accountId}/campaigns`, {
         access_token: accessToken,
         fields: 'id,name,status,objective,daily_budget,lifetime_budget,spend,impressions,clicks,ctr,cpc,created_time,updated_time'
-      }, (response: any) => {
+      }, (response: FacebookApiResponse<Campaign>) => {
         if (response && !response.error && response.data) {
           resolve(response.data)
         } else {
@@ -201,41 +199,9 @@ class MetaAuthService {
     })
   }
 
-  // Get ad sets for a campaign
-  async getAdSets(campaignId: string, accessToken: string): Promise<AdSet[]> {
-    return new Promise((resolve, reject) => {
-      window.FB.api(`/${campaignId}/adsets`, {
-        access_token: accessToken,
-        fields: 'id,name,status,campaign_id,daily_budget,lifetime_budget,targeting,created_time,updated_time'
-      }, (response: any) => {
-        if (response && !response.error && response.data) {
-          resolve(response.data)
-        } else {
-          reject(new Error('Failed to get ad sets'))
-        }
-      })
-    })
-  }
-
-  // Get ads for an ad set
-  async getAds(adsetId: string, accessToken: string): Promise<Ad[]> {
-    return new Promise((resolve, reject) => {
-      window.FB.api(`/${adsetId}/ads`, {
-        access_token: accessToken,
-        fields: 'id,name,status,adset_id,creative,created_time,updated_time'
-      }, (response: any) => {
-        if (response && !response.error && response.data) {
-          resolve(response.data)
-        } else {
-          reject(new Error('Failed to get ads'))
-        }
-      })
-    })
-  }
-
   // Get insights for a campaign
   async getInsights(campaignId: string, accessToken: string, dateRange?: { start: string; end: string }): Promise<Insights[]> {
-    const params: any = {
+    const params: Record<string, string> = {
       access_token: accessToken,
       fields: 'date_start,date_stop,spend,impressions,clicks,ctr,cpc,cpm,reach,frequency'
     }
@@ -251,7 +217,7 @@ class MetaAuthService {
     }
 
     return new Promise((resolve, reject) => {
-      window.FB.api(`/${campaignId}/insights`, params, (response: any) => {
+      window.FB.api(`/${campaignId}/insights`, params, (response: FacebookApiResponse<Insights>) => {
         if (response && !response.error && response.data) {
           resolve(response.data)
         } else {
@@ -279,7 +245,7 @@ class MetaAuthService {
   // Check if Meta token is valid
   async validateToken(accessToken: string): Promise<boolean> {
     return new Promise((resolve) => {
-      window.FB.api('/me', { access_token: accessToken }, (response: any) => {
+      window.FB.api('/me', { access_token: accessToken }, (response: FacebookUserResponse) => {
         resolve(!response.error)
       })
     })
@@ -287,7 +253,6 @@ class MetaAuthService {
 
   // Refresh token if needed
   async refreshTokenIfNeeded(accessToken: string): Promise<string> {
-    // Meta tokens are long-lived, but we can check if they're still valid
     const isValid = await this.validateToken(accessToken)
     if (!isValid) {
       throw new Error('Token is invalid, please login again')
@@ -305,8 +270,6 @@ export const useMetaAuth = () => {
     loginWithMeta: metaAuthService.loginWithMeta.bind(metaAuthService),
     getAdAccounts: metaAuthService.getAdAccounts.bind(metaAuthService),
     getCampaigns: metaAuthService.getCampaigns.bind(metaAuthService),
-    getAdSets: metaAuthService.getAdSets.bind(metaAuthService),
-    getAds: metaAuthService.getAds.bind(metaAuthService),
     getInsights: metaAuthService.getInsights.bind(metaAuthService),
     saveMetaUserToSupabase: metaAuthService.saveMetaUserToSupabase.bind(metaAuthService),
     validateToken: metaAuthService.validateToken.bind(metaAuthService),
@@ -317,6 +280,10 @@ export const useMetaAuth = () => {
 // Extend Window interface for Facebook SDK
 declare global {
   interface Window {
-    FB: any
+    FB: {
+      init: (config: Record<string, unknown>) => void
+      login: (callback: (response: FacebookResponse) => void, options: Record<string, unknown>) => void
+      api: (path: string, params: Record<string, unknown>, callback: (response: FacebookApiResponse<unknown>) => void) => void
+    }
   }
 }

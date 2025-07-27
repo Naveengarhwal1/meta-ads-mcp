@@ -3,15 +3,15 @@
 import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ChartRenderer, extractChartData, removeChartMarkers } from './chart-renderer'
-import { Send, Bot, User, BarChart3, Loader2 } from 'lucide-react'
+import { CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { ChartRenderer, removeChartMarkers } from './chart-renderer'
+import { Send, Bot, User, Loader2 } from 'lucide-react'
 
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
-  chartData?: any
+  chartData?: Record<string, unknown> // Fixed type
 }
 
 interface ChatInterfaceProps {
@@ -26,7 +26,7 @@ export function ChatInterface({ accessToken, className = "" }: ChatInterfaceProp
   const inputRef = useRef<HTMLInputElement>(null)
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }
 
   useEffect(() => {
@@ -39,15 +39,16 @@ export function ChatInterface({ accessToken, className = "" }: ChatInterfaceProp
     if (!input || !input.value.trim() || isLoading) return
 
     const userMessage = input.value.trim()
-    input.value = ''
+    const messageId = Date.now().toString()
 
     // Add user message
-    const newUserMessage: Message = {
-      id: Date.now().toString(),
+    setMessages(prev => [...prev, {
+      id: messageId,
       role: 'user',
       content: userMessage
-    }
-    setMessages(prev => [...prev, newUserMessage])
+    }])
+
+    input.value = ''
     setIsLoading(true)
 
     try {
@@ -57,70 +58,28 @@ export function ChatInterface({ accessToken, className = "" }: ChatInterfaceProp
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [
-            ...messages.map(m => ({ role: m.role, content: m.content })),
-            { role: 'user', content: userMessage }
-          ],
+          messages: [{ role: 'user', content: userMessage }],
           accessToken
         }),
       })
 
       if (!response.ok) {
-        throw new Error('Failed to get response')
+        throw new Error('Failed to send message')
       }
 
-      const reader = response.body?.getReader()
-      if (!reader) throw new Error('No response body')
-
-      let assistantMessage = ''
-      const decoder = new TextDecoder()
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        const chunk = decoder.decode(value)
-        assistantMessage += chunk
-
-        // Update the assistant message in real-time
-        setMessages(prev => {
-          const newMessages = [...prev]
-          const lastMessage = newMessages[newMessages.length - 1]
-          
-          if (lastMessage?.role === 'assistant') {
-            lastMessage.content = assistantMessage
-          } else {
-            newMessages.push({
-              id: (Date.now() + 1).toString(),
-              role: 'assistant',
-              content: assistantMessage
-            })
-          }
-          
-          return newMessages
-        })
-      }
-
-      // Process the final message to extract chart data
-      const chartData = extractChartData(assistantMessage)
-      const cleanContent = removeChartMarkers(assistantMessage)
-
-      setMessages(prev => {
-        const newMessages = [...prev]
-        const lastMessage = newMessages[newMessages.length - 1]
-        if (lastMessage?.role === 'assistant') {
-          lastMessage.content = cleanContent
-          if (chartData) {
-            lastMessage.chartData = chartData
-          }
-        }
-        return newMessages
-      })
-
-    } catch (error) {
-      console.error('Chat error:', error)
+      const data = await response.json()
+      
+      // Add AI response
       setMessages(prev => [...prev, {
-        id: Date.now().toString(),
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: data.content,
+        chartData: data.chartData
+      }])
+    } catch (error) {
+      console.error('Error sending message:', error)
+      setMessages(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: 'Sorry, I encountered an error. Please try again.'
       }])
@@ -130,129 +89,128 @@ export function ChatInterface({ accessToken, className = "" }: ChatInterfaceProp
   }
 
   const suggestedQuestions = [
-    "Show me my ad accounts",
-    "What are my campaign performance metrics?",
-    "Generate a chart of my daily spend",
-    "Which campaigns have the best CTR?",
-    "Show me impressions by campaign"
+    "Show me my ad account performance",
+    "What are my best performing campaigns?",
+    "Generate a chart of my spending trends",
+    "How can I optimize my ad budget?",
+    "What's my current CTR and CPC?"
   ]
 
   return (
     <div className={`flex flex-col h-full ${className}`}>
-      <Card className="flex-1 flex flex-col">
-        <CardHeader className="border-b">
-          <CardTitle className="flex items-center gap-2">
-            <Bot className="h-5 w-5 text-blue-600" />
-            Meta Ads AI Assistant
-          </CardTitle>
-        </CardHeader>
-        
-        <CardContent className="flex-1 flex flex-col p-0">
-          {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.length === 0 && (
-              <div className="text-center py-8">
-                <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  Welcome to Meta Ads AI Assistant
-                </h3>
-                <p className="text-gray-600 mb-6">
-                  Ask me about your campaigns, performance metrics, or request visualizations.
-                </p>
-                
-                {/* Suggested Questions */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-2xl mx-auto">
-                  {suggestedQuestions.map((question, index) => (
-                    <button
-                      key={index}
-                                              onClick={() => {
-                          if (inputRef.current) {
-                            inputRef.current.value = question
-                            handleSubmit(new Event('submit') as React.FormEvent)
-                          }
-                        }}
-                      className="text-left p-3 text-sm bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      {question}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+      {/* Chat Header */}
+      <CardHeader className="border-b">
+        <CardTitle className="flex items-center gap-2">
+          <Bot className="h-5 w-5 text-blue-600" />
+          Meta Ads AI Assistant
+        </CardTitle>
+      </CardHeader>
 
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex gap-3 ${
-                  message.role === 'user' ? 'justify-end' : 'justify-start'
-                }`}
-              >
-                {message.role === 'assistant' && (
-                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <Bot className="h-4 w-4 text-blue-600" />
-                  </div>
-                )}
+      {/* Messages Area */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.length === 0 && (
+          <div className="text-center text-gray-500 py-8">
+            <Bot className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+            <h3 className="text-lg font-semibold mb-2">Welcome to Meta Ads AI!</h3>
+            <p className="mb-4">Ask me anything about your ad accounts, campaigns, or performance.</p>
+            
+            {/* Suggested Questions */}
+            <div className="space-y-2 max-w-md mx-auto">
+              {suggestedQuestions.map((question, index) => (
+                <button
+                  key={index}
+                  onClick={() => {
+                    if (inputRef.current) {
+                      inputRef.current.value = question
+                      const form = inputRef.current.closest('form')
+                      if (form) {
+                        const submitEvent = new Event('submit', { bubbles: true, cancelable: true })
+                        form.dispatchEvent(submitEvent)
+                      }
+                    }
+                  }}
+                  className="text-left p-3 text-sm bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors w-full"
+                >
+                  {question}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {messages.map((message) => (
+          <div
+            key={message.id}
+            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+          >
+            <div className={`max-w-[80%] ${message.role === 'user' ? 'order-2' : 'order-1'}`}>
+              <div className={`flex items-start gap-2 ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  message.role === 'user' ? 'bg-blue-600' : 'bg-gray-600'
+                }`}>
+                  {message.role === 'user' ? (
+                    <User className="h-4 w-4 text-white" />
+                  ) : (
+                    <Bot className="h-4 w-4 text-white" />
+                  )}
+                </div>
                 
-                <div className={`max-w-[80%] ${message.role === 'user' ? 'order-1' : ''}`}>
-                  <div
-                    className={`p-3 rounded-lg ${
-                      message.role === 'user'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-900'
-                    }`}
-                  >
-                    <div className="whitespace-pre-wrap">{message.content}</div>
-                  </div>
+                <div className={`rounded-lg p-3 ${
+                  message.role === 'user' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-100 text-gray-900'
+                }`}>
+                  <p className="text-sm whitespace-pre-wrap">
+                    {message.chartData ? removeChartMarkers(message.content) : message.content}
+                  </p>
                   
-                  {/* Render chart if available */}
                   {message.chartData && (
-                    <div className="mt-4">
-                      <ChartRenderer chartData={message.chartData} />
+                    <div className="mt-3">
+                      <ChartRenderer 
+                        chartData={message.chartData as any} 
+                        className="w-full h-64"
+                      />
                     </div>
                   )}
                 </div>
-
-                {message.role === 'user' && (
-                  <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <User className="h-4 w-4 text-gray-600" />
-                  </div>
-                )}
               </div>
-            ))}
+            </div>
+          </div>
+        ))}
 
-            {isLoading && (
-              <div className="flex gap-3 justify-start">
-                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <Bot className="h-4 w-4 text-blue-600" />
-                </div>
-                <div className="bg-gray-100 p-3 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span className="text-gray-600">AI is thinking...</span>
-                  </div>
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="flex items-start gap-2">
+              <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
+                <Bot className="h-4 w-4 text-white" />
+              </div>
+              <div className="bg-gray-100 rounded-lg p-3">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm text-gray-600">Thinking...</span>
                 </div>
               </div>
-            )}
-
-            <div ref={messagesEndRef} />
+            </div>
           </div>
+        )}
 
-          {/* Input Area */}
-          <div className="border-t p-4">
-            <form onSubmit={handleSubmit} className="flex gap-2">
-              <Input
-                ref={inputRef}
-                placeholder="Ask about your Meta Ads campaigns..."
-                className="flex-1"
-                disabled={isLoading}
-              />
-              <Button type="submit" disabled={isLoading}>
-                <Send className="h-4 w-4" />
-              </Button>
-            </form>
-          </div>
-        </CardContent>
-      </Card>
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input Area */}
+      <CardContent className="border-t p-4">
+        <form onSubmit={handleSubmit} className="flex gap-2">
+          <Input
+            ref={inputRef}
+            placeholder="Ask about your Meta Ads performance..."
+            className="flex-1"
+            disabled={isLoading}
+          />
+          <Button type="submit" disabled={isLoading}>
+            <Send className="h-4 w-4" />
+          </Button>
+        </form>
+      </CardContent>
     </div>
   )
 }
