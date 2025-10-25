@@ -279,9 +279,13 @@ class AuthInjectionMiddleware(BaseHTTPMiddleware):
                             if verify_pat(raw_token, pat.token_hash):
                                 logger.info(f"✅ PAT hash verified for {pat.id}")
                                 
-                                # Check if token is active
-                                if not pat.is_active:
-                                    logger.warning(f"PAT {pat.id} is not active (revoked or expired)")
+                                # Check if token is active (not revoked or expired)
+                                if pat.revoked_at is not None:
+                                    logger.warning(f"PAT {pat.id} is revoked")
+                                    continue
+                                
+                                if pat.expires_at and pat.expires_at < datetime.utcnow():
+                                    logger.warning(f"PAT {pat.id} is expired")
                                     continue
                                 
                                 # Update last_used_at
