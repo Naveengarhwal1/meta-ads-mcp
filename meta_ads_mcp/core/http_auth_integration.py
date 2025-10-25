@@ -255,61 +255,86 @@ class AuthInjectionMiddleware(BaseHTTPMiddleware):
             from .models import User, PersonalAccessToken, OAuthToken
             from .pat import extract_prefix, verify_pat
             from sqlalchemy import select
+            import asyncio
             
             prefix = extract_prefix(raw_token)
+            logger.info(f"🔍 Verifying PAT with prefix: {prefix}")
             
-            with get_db() as db:
-                # Find PATs with matching prefix
-                candidates = db.execute(
-                    select(PersonalAccessToken)
-                    .where(PersonalAccessToken.token_prefix == prefix)
-                ).scalars().all()
-                
-                # Verify hash for each candidate
-                for pat in candidates:
-                    if verify_pat(raw_token, pat.token_hash):
-                        # Check if token is active
-                        if not pat.is_active:
-                            logger.warning(f"PAT {pat.id} is not active (revoked or expired)")
-                            continue
+            # Run database operations in a thread pool to avoid blocking the event loop
+            def db_lookup():
+                try:
+                    with get_db() as db:
+                        # Find PATs with matching prefix
+                        candidates = db.execute(
+                            select(PersonalAccessToken)
+                            .where(PersonalAccessToken.token_prefix == prefix)
+                        ).scalars().all()
                         
-                        # Update last_used_at
-                        pat.last_used_at = datetime.utcnow()
-                        db.commit()
+                        logger.info(f"📋 Found {len(candidates)} candidate PAT(s) with prefix {prefix}")
                         
-                        # Get user (may not exist if only OAuth tokens were created)
-                        user = db.get(User, pat.user_id)
-                        user_email = user.email if user else f"user_{pat.user_id[:8]}"
-                        user_id = pat.user_id
+                        # Verify hash for each candidate
+                        for pat in candidates:
+                            logger.info(f"🔐 Verifying PAT: {pat.id}")
+                            
+                            if verify_pat(raw_token, pat.token_hash):
+                                logger.info(f"✅ PAT hash verified for {pat.id}")
+                                
+                                # Check if token is active
+                                if not pat.is_active:
+                                    logger.warning(f"PAT {pat.id} is not active (revoked or expired)")
+                                    continue
+                                
+                                # Update last_used_at
+                                pat.last_used_at = datetime.utcnow()
+                                db.commit()
+                                logger.info(f"📝 Updated last_used_at for PAT {pat.id}")
+                                
+                                # Get user (may not exist if only OAuth tokens were created)
+                                user = db.get(User, pat.user_id)
+                                user_email = user.email if user else f"user_{pat.user_id[:8]}"
+                                user_id = pat.user_id
+                                logger.info(f"👤 User: {user_email}")
+                                
+                                # Get Meta token for this user
+                                meta_token = db.execute(
+                                    select(OAuthToken)
+                                    .where(
+                                        OAuthToken.user_id == pat.user_id,
+                                        OAuthToken.provider == "meta"
+                                    )
+                                ).scalar_one_or_none()
+                                
+                                if not meta_token:
+                                    logger.warning(f"❌ No Meta token found for user {user_email}")
+                                    return None, None
+                                
+                                access_token = meta_token.access_token
+                                logger.info(f"✅ Retrieved Meta OAuth token for user: {user_email}")
+                                logger.info(f"   Token starts with: {access_token[:20]}...")
+                                
+                                # Return a simple dict with user info instead of the detached object
+                                user_info = {
+                                    'id': user_id,
+                                    'email': user_email
+                                }
+                                return user_info, access_token
                         
-                        # Get Meta token for this user
-                        meta_token = db.execute(
-                            select(OAuthToken)
-                            .where(
-                                OAuthToken.user_id == pat.user_id,
-                                OAuthToken.provider == "meta"
-                            )
-                        ).scalar_one_or_none()
-                        
-                        if not meta_token:
-                            logger.warning(f"No Meta token found for user {user_email}")
-                            return None, None
-                        
-                        access_token = meta_token.access_token
-                        logger.debug(f"PAT verified for user: {user_email}")
-                        
-                        # Return a simple dict with user info instead of the detached object
-                        user_info = {
-                            'id': user_id,
-                            'email': user_email
-                        }
-                        return user_info, access_token
-                
-                logger.warning(f"No valid PAT found for prefix {prefix}")
-                return None, None
+                        logger.warning(f"❌ No valid PAT found for prefix {prefix}")
+                        return None, None
+                except Exception as db_e:
+                    logger.error(f"❌ Database error during PAT verification: {db_e}", exc_info=True)
+                    raise
+            
+            # Run in thread pool to avoid blocking
+            result = await asyncio.to_thread(db_lookup)
+            if result and result[0] and result[1]:
+                logger.info(f"🎉 PAT verification successful!")
+            else:
+                logger.warning(f"⚠️ PAT verification returned no results")
+            return result
         
         except Exception as e:
-            logger.error(f"Error verifying PAT: {e}", exc_info=True)
+            logger.error(f"❌ Error verifying PAT (outer catch): {e}", exc_info=True)
             return None, None
 
 def setup_starlette_middleware(app):
